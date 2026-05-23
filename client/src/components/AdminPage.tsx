@@ -16,11 +16,20 @@ import { api } from "../lib/api";
 
 const btnAnim = "transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]";
 
-interface AdminPageProps {
-  onNavigate?: (page: string, state?: any) => void;
+export interface AdminReportsViewState {
+  reportSearch: string;
+  reportYearFilter: string;
+  reportMonthFilter: string;
 }
 
-export function AdminPage({ onNavigate }: AdminPageProps) {
+interface AdminPageProps {
+  onNavigate?: (page: string, state?: any) => void;
+  initialReportsViewState?: AdminReportsViewState;
+  restoreScrollY?: number | null;
+  onRestoreScrollDone?: () => void;
+}
+
+export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY, onRestoreScrollDone }: AdminPageProps) {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [fetchedUsers, setFetchedUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,11 +42,15 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
   const [desaDraft, setDesaDraft] = useState("");
   const [savingLocation, setSavingLocation] = useState(false);
   const [recentReports, setRecentReports] = useState<any[]>([]);
-  const [reportSearch, setReportSearch] = useState("");
-  const [reportYearFilter, setReportYearFilter] = useState("all");
-  const [reportMonthFilter, setReportMonthFilter] = useState("all");
+  const [reportSearch, setReportSearch] = useState(initialReportsViewState?.reportSearch ?? "");
+  const [reportYearFilter, setReportYearFilter] = useState(initialReportsViewState?.reportYearFilter ?? "all");
+  const [reportMonthFilter, setReportMonthFilter] = useState(initialReportsViewState?.reportMonthFilter ?? "all");
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
+  const [savingDesaReportId, setSavingDesaReportId] = useState<string | null>(null);
+  const [desaDraftByReportId, setDesaDraftByReportId] = useState<Record<string, string>>({});
+  const [desaSaveErrorByReportId, setDesaSaveErrorByReportId] = useState<Record<string, string>>({});
+  const [desaSaveSuccessByReportId, setDesaSaveSuccessByReportId] = useState<Record<string, string>>({});
   const [viewUser, setViewUser] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ firstName: "", middleName: "", lastName: "", email: "", role: "officer", phone: "", workLocation: "" });
@@ -61,6 +74,14 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
     };
     if (ready && user && ALLOWED_ROLES.has(String(user.role || "").toUpperCase())) fetchUsers();
   }, [ready, user]);
+
+  useEffect(() => {
+    if (isLoading || restoreScrollY === null || restoreScrollY === undefined) return;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: restoreScrollY, behavior: "auto" });
+      onRestoreScrollDone?.();
+    });
+  }, [isLoading, restoreScrollY, onRestoreScrollDone]);
 
   const handleLoadKabupaten = (kabupaten: string) => {
     setKabupatenInput(kabupaten);
@@ -238,7 +259,105 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
   };
 
   const handleOpenViewReport = (report: any) => {
-    onNavigate?.("uploaded-data-view", { reportId: report?._id || null });
+    onNavigate?.("uploaded-data-view", {
+      reportId: report?._id || null,
+      reportsViewState: {
+        reportSearch,
+        reportYearFilter,
+        reportMonthFilter,
+      },
+      scrollY: typeof window !== "undefined" ? window.scrollY : 0,
+    });
+  };
+
+  const getReportKabupaten = (report: any) => {
+    return String(report?.kabupaten || report?.worksheets?.[0]?.kabupaten || "")
+      .replace(/^:\s*/, "")
+      .trim();
+  };
+
+  const getDesaOptionsForReport = (report: any) => {
+    const kabupatenKey = getReportKabupaten(report).toLowerCase();
+    if (!kabupatenKey) return [] as string[];
+    const found = locationConfigs.find((cfg: any) => String(cfg?.kabupaten || "").trim().toLowerCase() === kabupatenKey);
+    return Array.isArray(found?.desaList)
+      ? found.desaList.map((d: any) => String(d || "").trim()).filter(Boolean)
+      : [];
+  };
+
+  const handleAssignDesaToReport = async (report: any, selectedDesa: string) => {
+    const reportId = String(report?._id || "");
+    const desa = String(selectedDesa || "").trim();
+    if (!reportId || !desa) return;
+
+    setSavingDesaReportId(reportId);
+    setDesaSaveErrorByReportId((prev) => {
+      const next = { ...prev };
+      delete next[reportId];
+      return next;
+    });
+    setDesaSaveSuccessByReportId((prev) => {
+      const next = { ...prev };
+      delete next[reportId];
+      return next;
+    });
+    setDesaDraftByReportId((prev) => ({ ...prev, [reportId]: desa }));
+
+    try {
+      const { data } = await api.get(`/elderly-reports/${reportId}`);
+      const item = data?.item;
+      if (!item) throw new Error("Data laporan tidak ditemukan");
+
+      const existingWorksheets = Array.isArray(item.worksheets) ? item.worksheets : [];
+      const updatedWorksheets = existingWorksheets.map((ws: any) => ({
+        ...ws,
+        desa: String(ws?.desa || "").trim() || desa,
+      }));
+
+      await api.put(`/elderly-reports/${reportId}`, {
+        kabupaten: item.kabupaten,
+        bulanTahun: item.bulanTahun,
+        worksheets: updatedWorksheets,
+        puskesmas: item.puskesmas,
+        desa,
+        metaPairs: item.metaPairs,
+        headerKeys: item.headerKeys,
+        headerLabels: item.headerLabels,
+        headerOrder: item.headerOrder,
+        rowData: item.rowData,
+        fileName: item.fileName,
+        sourceSheetName: item.sourceSheetName,
+        status: item.status || "imported",
+      });
+
+      setRecentReports((prev) =>
+        prev.map((r) => {
+          if (String(r?._id || "") !== reportId) return r;
+          const rowWorksheets = Array.isArray(r?.worksheets) ? r.worksheets : [];
+          return {
+            ...r,
+            desa,
+            worksheets: rowWorksheets.map((ws: any) => ({
+              ...ws,
+              desa: String(ws?.desa || "").trim() || desa,
+            })),
+          };
+        })
+      );
+      setDesaSaveSuccessByReportId((prev) => ({ ...prev, [reportId]: "Desa tersimpan" }));
+      window.setTimeout(() => {
+        setDesaSaveSuccessByReportId((prev) => {
+          const next = { ...prev };
+          delete next[reportId];
+          return next;
+        });
+      }, 1600);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "Gagal menyimpan desa.";
+      setDesaSaveErrorByReportId((prev) => ({ ...prev, [reportId]: msg }));
+    } finally {
+      setSavingDesaReportId(null);
+    }
   };
 
   const getReportYear = (r: any) => {
@@ -269,6 +388,7 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
         const fields = [
           r.fileName, r.bulanTahun, r.kabupaten,
           r.puskesmas ?? r.worksheets?.[0]?.puskesmas,
+          r.desa ?? r.worksheets?.[0]?.desa,
           getSubmitterName(r),
         ];
         if (!fields.some((f) => String(f ?? "").toLowerCase().includes(s))) return false;
@@ -459,10 +579,12 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="text-xs text-right">No.</TableHead>
                   <TableHead className="text-xs">Nama File</TableHead>
                   <TableHead className="text-xs">Bulan/Tahun</TableHead>
                   <TableHead className="text-xs">Kabupaten</TableHead>
                   <TableHead className="text-xs">Puskesmas</TableHead>
+                  <TableHead className="text-xs">Desa</TableHead>
                   <TableHead className="text-xs">Pengirim</TableHead>
                   <TableHead className="text-xs">Waktu Upload</TableHead>
                   <TableHead className="text-xs">Aksi</TableHead>
@@ -471,17 +593,59 @@ export function AdminPage({ onNavigate }: AdminPageProps) {
               <TableBody>
                 {filteredReports.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-sm text-muted-foreground">
+                    <TableCell colSpan={9} className="text-center py-8 text-sm text-muted-foreground">
                       {recentReports.length === 0 ? "Belum ada laporan terunggah." : "Tidak ada laporan sesuai filter."}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredReports.map((r: any) => (
+                  filteredReports.map((r: any, idx: number) => (
                     <TableRow key={r._id} className="hover:bg-muted/50">
+                      <TableCell className="text-sm text-right">{idx + 1}</TableCell>
                       <TableCell className="text-sm font-medium max-w-[180px] truncate" title={r.fileName || "-"}>{r.fileName || "-"}</TableCell>
                       <TableCell className="text-sm">{r.bulanTahun || "-"}</TableCell>
                       <TableCell className="text-sm">{String(r.kabupaten || "-").replace(/^:\s*/, "")}</TableCell>
                       <TableCell className="text-sm">{String(r.puskesmas || r.worksheets?.[0]?.puskesmas || "-").replace(/^:\s*/, "")}</TableCell>
+                      <TableCell className="text-sm">
+                        {(() => {
+                          const reportId = String(r?._id || "");
+                          const currentDesa = String(r?.desa || r?.worksheets?.[0]?.desa || "").replace(/^:\s*/, "").trim();
+                          if (currentDesa) return currentDesa;
+
+                          const desaOptions = getDesaOptionsForReport(r);
+                          if (!desaOptions.length) return "-";
+
+                          const isSaving = savingDesaReportId === reportId;
+                          const draftValue = desaDraftByReportId[reportId] || "";
+                          const saveError = desaSaveErrorByReportId[reportId];
+                          const saveSuccess = desaSaveSuccessByReportId[reportId];
+
+                          return (
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-1.5">
+                                <Select
+                                  value={draftValue}
+                                  onValueChange={(value) => {
+                                    void handleAssignDesaToReport(r, value);
+                                  }}
+                                  disabled={isSaving}
+                                >
+                                  <SelectTrigger className="h-8 w-[200px]">
+                                    <SelectValue placeholder="-" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {desaOptions.map((opt: string) => (
+                                      <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                {isSaving && <Loader className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+                              </div>
+                              {saveError && <p className="text-[11px] text-destructive">{saveError}</p>}
+                              {!saveError && saveSuccess && <p className="text-[11px] text-emerald-700">{saveSuccess}</p>}
+                            </div>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell className="text-sm">{getSubmitterName(r)}</TableCell>
                       <TableCell className="text-sm whitespace-nowrap">{r.submittedAt || r.createdAt ? new Date(r.submittedAt || r.createdAt).toLocaleString("id-ID") : "-"}</TableCell>
                       <TableCell>

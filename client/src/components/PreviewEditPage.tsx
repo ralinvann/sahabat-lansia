@@ -289,6 +289,14 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
     return { total: rows.length, valid, warning: 0, error: errorCount };
   }, [rows, editedRows, headerKeys]);
 
+  const confirmDisabledReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (!rows || rows.length === 0) reasons.push("Belum ada data untuk diimpor.");
+    if (!selectedDesa) reasons.push("Desa belum dipilih.");
+    if (validationResults.error > 0) reasons.push(`Masih ada ${validationResults.error} error pada data.`);
+    return reasons;
+  }, [rows, selectedDesa, validationResults.error]);
+
   const handleCellChange = (rowId: string | number, key: string, value: any) => {
     setEditedRows((prev) => ({ ...prev, [String(rowId)]: { ...(prev[String(rowId)] || {}), [key]: value } }));
   };
@@ -766,7 +774,7 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
               </Button>
               <Button
                 onClick={() => void handleConfirmImport()}
-                disabled={loading || validationResults.error > 0}
+                disabled={loading || confirmDisabledReasons.length > 0}
                 className={`gap-2 ${btnAnim}`}
               >
                 {loading ? "Memproses..." : (
@@ -777,6 +785,13 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
                 )}
               </Button>
             </div>
+
+            {!loading && confirmDisabledReasons.length > 0 && (
+              <div className="text-center">
+                <p className="text-xs text-amber-700">Konfirmasi belum bisa dilakukan karena:</p>
+                <p className="text-xs text-amber-700">{confirmDisabledReasons.join(" ")}</p>
+              </div>
+            )}
 
             {/* Messages */}
             {errorMsg && (

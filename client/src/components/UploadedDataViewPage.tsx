@@ -187,6 +187,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
   const [editedRows, setEditedRows] = useState<Record<string, Record<string, any>>>({});
   const [rowSearch, setRowSearch] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [editedDesa, setEditedDesa] = useState("");
 
   useEffect(() => {
     if (!reportId) {
@@ -205,6 +206,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
         const { data } = await api.get(`/elderly-reports/${reportId}`);
         if (cancelled) return;
         setReport(data?.item || null);
+        setEditedDesa(String(data?.item?.desa ?? data?.item?.worksheets?.[0]?.desa ?? "").trim());
         setIsEditing(false);
         setEditedRows({});
         setRowSearch("");
@@ -347,6 +349,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
     setSaveSuccess(null);
     if (isEditing) {
       setEditedRows({});
+      setEditedDesa(String(report?.desa ?? activeWorksheet?.desa ?? "").trim());
       setIsEditing(false);
       return;
     }
@@ -355,6 +358,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
 
   const handleCancelEdit = () => {
     setEditedRows({});
+    setEditedDesa(String(report?.desa ?? activeWorksheet?.desa ?? "").trim());
     setIsEditing(false);
     setSaveError(null);
   };
@@ -387,6 +391,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
       const payloadWorksheet: WorksheetData = {
         ...activeWorksheet,
         rowData: updatedRows,
+        desa: editedDesa.trim(),
         headerKeys: activeWorksheet.headerKeys ?? headerKeys,
         headerLabels: activeWorksheet.headerLabels ?? headerKeys.map((key) => key.toUpperCase()),
         headerOrder: activeWorksheet.headerOrder ?? headerKeys,
@@ -397,7 +402,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
         bulanTahun: report.bulanTahun ?? payloadWorksheet.bulanTahun ?? "",
         fileName: report.fileName,
         puskesmas: payloadWorksheet.puskesmas ?? report.puskesmas ?? "",
-        desa: payloadWorksheet.desa ?? report.desa ?? "",
+        desa: editedDesa.trim() || payloadWorksheet.desa || report.desa || "",
         metaPairs: payloadWorksheet.metaPairs ?? report.metaPairs ?? [],
         headerKeys: payloadWorksheet.headerKeys ?? headerKeys,
         headerLabels: payloadWorksheet.headerLabels ?? headerKeys.map((key) => key.toUpperCase()),
@@ -500,7 +505,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
           <h2 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Lihat Data Upload</h2>
           <p className="text-sm text-muted-foreground mt-1">Halaman ini hanya untuk admin/superadmin.</p>
         </div>
-        <Button variant="outline" className="gap-2" onClick={onBack}>
+        <Button className={`gap-2 ${btnAnim}`} onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />
           Kembali
         </Button>
@@ -530,6 +535,19 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
                   <div><span className="text-muted-foreground">Bulan/Tahun:</span> {report.bulanTahun || "-"}</div>
                   <div><span className="text-muted-foreground">Kabupaten:</span> {String(report.kabupaten || "-").replace(/^:\s*/, "")}</div>
                   <div><span className="text-muted-foreground">Puskesmas:</span> {String(activeWorksheet.puskesmas || report.puskesmas || "-").replace(/^:\s*/, "")}</div>
+                  <div>
+                    <span className="text-muted-foreground">Desa:</span>{" "}
+                    {isEditing ? (
+                      <Input
+                        className="mt-1 h-8 w-full max-w-[260px]"
+                        value={editedDesa}
+                        onChange={(e) => setEditedDesa(e.target.value)}
+                        placeholder="Masukkan desa"
+                      />
+                    ) : (
+                      <span>{String(report.desa || activeWorksheet.desa || "-").replace(/^:\s*/, "")}</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-2"><User className="w-4 h-4 text-muted-foreground" /><span className="text-muted-foreground">Diunggah oleh:</span> <span>{reporterName}</span></div>
                   <div className="flex items-center gap-2"><CalendarClock className="w-4 h-4 text-muted-foreground" /><span className="text-muted-foreground">Waktu upload:</span> <span>{uploadedAt ? new Date(uploadedAt).toLocaleString("id-ID") : "-"}</span></div>
                 </div>

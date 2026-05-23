@@ -5,7 +5,7 @@ import { Dashboard } from "./components/Dashboard";
 import { UploadPage } from "./components/UploadPage";
 import { PreviewEditPage } from "./components/PreviewEditPage";
 import { UserProfile } from "./components/UserProfile";
-import { AdminPage } from "./components/AdminPage";
+import { AdminPage, type AdminReportsViewState } from "./components/AdminPage";
 import { UploadedDataViewPage } from "./components/UploadedDataViewPage";
 import { useAuth } from "./hooks/useAuth";
 
@@ -14,6 +14,13 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState("dashboard");
   const [previewData, setPreviewData] = useState<any>(null);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [adminReportsViewState, setAdminReportsViewState] = useState<AdminReportsViewState>({
+    reportSearch: "",
+    reportYearFilter: "all",
+    reportMonthFilter: "all",
+  });
+  const [adminReportsScrollY, setAdminReportsScrollY] = useState(0);
+  const [pendingAdminRestoreScrollY, setPendingAdminRestoreScrollY] = useState<number | null>(null);
 
   // Force login page when opening reset-password links from email.
   useEffect(() => {
@@ -141,9 +148,18 @@ export default function App() {
         }
         return (
           <AdminPage
+            initialReportsViewState={adminReportsViewState}
+            restoreScrollY={pendingAdminRestoreScrollY}
+            onRestoreScrollDone={() => setPendingAdminRestoreScrollY(null)}
             onNavigate={(page, state) => {
               if (page === "uploaded-data-view") {
                 setSelectedReportId(state?.reportId || null);
+                if (state?.reportsViewState) {
+                  setAdminReportsViewState(state.reportsViewState);
+                }
+                if (typeof state?.scrollY === "number") {
+                  setAdminReportsScrollY(state.scrollY);
+                }
                 setCurrentPage("uploaded-data-view");
                 return;
               }
@@ -164,7 +180,10 @@ export default function App() {
         return (
           <UploadedDataViewPage
             reportId={selectedReportId}
-            onBack={() => setCurrentPage("users")}
+            onBack={() => {
+              setPendingAdminRestoreScrollY(adminReportsScrollY);
+              setCurrentPage("users");
+            }}
           />
         );
 
