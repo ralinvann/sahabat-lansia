@@ -246,20 +246,6 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
     });
   }, [headerKeys, headerLabels, rows, editedRows]);
 
-  const getRowValidationStatus = (row: any): "error" | "valid" => {
-    const hasName = row.nama !== undefined ? Boolean(String(row.nama).trim()) : true;
-    const hasNik = row.nik !== undefined ? Boolean(String(row.nik).trim()) : true;
-    const hasAge = row.umur !== undefined ? !(row.umur === null || row.umur === "" || Number.isNaN(Number(row.umur))) : true;
-    let hasGender = true;
-    for (const key of Object.keys(row)) {
-      const lower = key.toLowerCase();
-      if ((lower === "jk" || (lower.includes("jenis") && lower.includes("kelamin"))) && (!row[key] || !String(row[key]).trim())) {
-        hasGender = false; break;
-      }
-    }
-    return hasName && hasNik && hasAge && hasGender ? "valid" : "error";
-  };
-
   const getCellError = (row: any, key: string): string | null => {
     const lowerKey = key.toLowerCase();
     const cellValue = row[key];
@@ -289,15 +275,19 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
     return null;
   };
 
+  const hasRowError = (row: any): boolean => {
+    return headerKeys.some((key) => getCellError(row, key) !== null);
+  };
+
   const validationResults = useMemo(() => {
     if (!rows) return { total: 0, valid: 0, warning: 0, error: 0 };
     let valid = 0, errorCount = 0;
     rows.forEach((r) => {
       const edits = editedRows[String(r.id)];
-      getRowValidationStatus(edits ? { ...r, ...edits } : r) === "error" ? errorCount++ : valid++;
+      hasRowError(edits ? { ...r, ...edits } : r) ? errorCount++ : valid++;
     });
     return { total: rows.length, valid, warning: 0, error: errorCount };
-  }, [rows, editedRows]);
+  }, [rows, editedRows, headerKeys]);
 
   const handleCellChange = (rowId: string | number, key: string, value: any) => {
     setEditedRows((prev) => ({ ...prev, [String(rowId)]: { ...(prev[String(rowId)] || {}), [key]: value } }));
@@ -668,7 +658,9 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
               </TableHeader>
               <TableBody>
                 {rows.map((row) => {
-                  const status = getRowValidationStatus(row);
+                  const edits = editedRows[String(row.id)];
+                  const rowToValidate = edits ? { ...row, ...edits } : row;
+                  const status = hasRowError(rowToValidate) ? "error" : "valid";
                   return (
                     <TableRow
                       key={String(row.id)}

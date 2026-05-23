@@ -9,14 +9,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
 import { Label } from "./ui/label";
-import { Users, Shield, Activity, Search, UserPlus, Settings, Eye, Edit3, Trash2, Loader, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Users, Shield, Activity, Search, UserPlus, Settings, Eye, Edit3, Trash2, Loader, ArrowUpDown, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { AddUserDialog } from "./AddUserDialog";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 
 const btnAnim = "transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]";
 
-export function AdminPage() {
+interface AdminPageProps {
+  onNavigate?: (page: string, state?: any) => void;
+}
+
+export function AdminPage({ onNavigate }: AdminPageProps) {
   const [isAddUserDialogOpen, setIsAddUserDialogOpen] = useState(false);
   const [fetchedUsers, setFetchedUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,6 +37,7 @@ export function AdminPage() {
   const [reportYearFilter, setReportYearFilter] = useState("all");
   const [reportMonthFilter, setReportMonthFilter] = useState("all");
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
   const [viewUser, setViewUser] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ firstName: "", middleName: "", lastName: "", email: "", role: "officer", phone: "", workLocation: "" });
@@ -185,6 +190,55 @@ export function AdminPage() {
     } finally {
       setDeletingReportId(null);
     }
+  };
+
+  const handleDownloadReport = async (report: any) => {
+    try {
+      setDownloadingReportId(report._id);
+      const response = await api.get(`/elderly-reports/${report._id}/download`, {
+        responseType: "blob",
+      });
+
+      const contentDisposition = String(response.headers?.["content-disposition"] || "");
+      const match = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+      const uploadedFileName = String(report?.fileName || "Laporan_Bulanan.xlsx").trim();
+      const dotIdx = uploadedFileName.lastIndexOf(".");
+      const baseName = dotIdx > 0 ? uploadedFileName.slice(0, dotIdx) : uploadedFileName;
+      const uploader = report?.createdBy
+        ? [report.createdBy.firstName, report.createdBy.middleName, report.createdBy.lastName].filter(Boolean).join(" ").trim() || report.createdBy.email || "Unknown"
+        : "Unknown";
+      const uploadedAt = new Date(report?.submittedAt || report?.createdAt || Date.now());
+      const timestamp = Number.isNaN(uploadedAt.getTime())
+        ? String(Date.now())
+        : [
+            uploadedAt.getFullYear(),
+            String(uploadedAt.getMonth() + 1).padStart(2, "0"),
+            String(uploadedAt.getDate()).padStart(2, "0"),
+            String(uploadedAt.getHours()).padStart(2, "0"),
+            String(uploadedAt.getMinutes()).padStart(2, "0"),
+            String(uploadedAt.getSeconds()).padStart(2, "0"),
+          ].join("");
+      const sanitizePart = (value: string) => value.replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "").trim() || "Unknown";
+      const fallback = `${sanitizePart(baseName)}_${sanitizePart(String(uploader))}_${timestamp}.xlsx`;
+      const filename = match?.[1] || fallback;
+
+      const url = window.URL.createObjectURL(response.data);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert("Gagal mengunduh laporan: " + (err?.response?.data?.message || err?.message || "Error"));
+    } finally {
+      setDownloadingReportId(null);
+    }
+  };
+
+  const handleOpenViewReport = (report: any) => {
+    onNavigate?.("uploaded-data-view", { reportId: report?._id || null });
   };
 
   const getReportYear = (r: any) => {
@@ -431,18 +485,41 @@ export function AdminPage() {
                       <TableCell className="text-sm">{getSubmitterName(r)}</TableCell>
                       <TableCell className="text-sm whitespace-nowrap">{r.submittedAt || r.createdAt ? new Date(r.submittedAt || r.createdAt).toLocaleString("id-ID") : "-"}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className={`h-7 w-7 text-destructive hover:text-destructive ${btnAnim}`}
-                          disabled={deletingReportId === r._id}
-                          onClick={() => handleDeleteReport(r)}
-                          title="Hapus laporan dan data terkait"
-                        >
-                          {deletingReportId === r._id
-                            ? <Loader className="w-3.5 h-3.5 animate-spin" />
-                            : <Trash2 className="w-3.5 h-3.5" />}
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${btnAnim}`}
+                            onClick={() => handleOpenViewReport(r)}
+                            title="Lihat data upload"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${btnAnim}`}
+                            disabled={downloadingReportId === r._id}
+                            onClick={() => void handleDownloadReport(r)}
+                            title="Unduh file laporan"
+                          >
+                            {downloadingReportId === r._id
+                              ? <Loader className="w-3.5 h-3.5 animate-spin" />
+                              : <Download className="w-3.5 h-3.5" />}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 text-destructive hover:text-destructive ${btnAnim}`}
+                            disabled={deletingReportId === r._id}
+                            onClick={() => handleDeleteReport(r)}
+                            title="Hapus laporan dan data terkait"
+                          >
+                            {deletingReportId === r._id
+                              ? <Loader className="w-3.5 h-3.5 animate-spin" />
+                              : <Trash2 className="w-3.5 h-3.5" />}
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))

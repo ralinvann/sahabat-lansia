@@ -6,6 +6,7 @@ export type ActivityAction =
   | "password_change"
   | "profile_update"
   | "file_upload"
+  | "file_update"
   | "file_delete";
 
 export interface IActivityLog extends Document {
@@ -22,7 +23,7 @@ const ActivityLogSchema = new Schema<IActivityLog>(
     user: { type: Schema.Types.ObjectId, ref: "User", required: true, index: true },
     action: {
       type: String,
-      enum: ["login", "logout", "password_change", "profile_update", "file_upload", "file_delete"],
+      enum: ["login", "logout", "password_change", "profile_update", "file_upload", "file_update", "file_delete"],
       required: true,
       index: true,
     },

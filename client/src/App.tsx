@@ -6,12 +6,14 @@ import { UploadPage } from "./components/UploadPage";
 import { PreviewEditPage } from "./components/PreviewEditPage";
 import { UserProfile } from "./components/UserProfile";
 import { AdminPage } from "./components/AdminPage";
+import { UploadedDataViewPage } from "./components/UploadedDataViewPage";
 import { useAuth } from "./hooks/useAuth";
 
 export default function App() {
   const { user, isAuthed, ready, loading, login, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState("dashboard");
   const [previewData, setPreviewData] = useState<any>(null);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
 
   // Force login page when opening reset-password links from email.
   useEffect(() => {
@@ -26,7 +28,7 @@ export default function App() {
   useEffect(() => {
     if (!ready || loading) return;
 
-    const protectedPages = ["upload", "preview", "account", "users"];
+    const protectedPages = ["upload", "preview", "account", "users", "uploaded-data-view"];
     if (
       !isAuthed &&
       currentPage !== "login" &&
@@ -55,7 +57,7 @@ export default function App() {
   }, []);
 
   const handlePageChange = (page: string) => {
-    const protectedPages = ["upload", "preview", "account", "users"];
+    const protectedPages = ["upload", "preview", "account", "users", "uploaded-data-view"];
     if (protectedPages.includes(page) && !isAuthed) {
       setCurrentPage("login");
     } else {
@@ -137,7 +139,34 @@ export default function App() {
             />
           );
         }
-        return <AdminPage />;
+        return (
+          <AdminPage
+            onNavigate={(page, state) => {
+              if (page === "uploaded-data-view") {
+                setSelectedReportId(state?.reportId || null);
+                setCurrentPage("uploaded-data-view");
+                return;
+              }
+              setCurrentPage(page);
+            }}
+          />
+        );
+
+      case "uploaded-data-view":
+        if (user?.role !== "admin" && user?.role !== "superadmin") {
+          return (
+            <Dashboard
+              userStatus={isAuthed ? "authenticated" : "guest"}
+              onLoginClick={() => setCurrentPage("login")}
+            />
+          );
+        }
+        return (
+          <UploadedDataViewPage
+            reportId={selectedReportId}
+            onBack={() => setCurrentPage("users")}
+          />
+        );
 
       case "help":
         return (

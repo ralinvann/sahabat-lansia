@@ -2,7 +2,6 @@
 import { Request, Response } from "express";
 import { ElderlyMonthlyReport } from "../models/ElderlyMonthlyReport";
 import { ElderlyPerson } from "../models/ElderlyPerson";
-import { generateMonthlyReportExcel } from "../utils/generateMonthlyReportExcel";
 import {
   generateAnnualReportA,
   findMonthIndex,
@@ -616,7 +615,7 @@ export const getElderlyMonthlyReportById = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const doc = await ElderlyMonthlyReport.findById(id);
+    const doc = await ElderlyMonthlyReport.findById(id).populate("createdBy", "firstName middleName lastName email");
 
     if (!doc) {
       res.status(404).json({ message: "Not found." });
@@ -630,13 +629,88 @@ export const getElderlyMonthlyReportById = async (
   }
 };
 
+export const updateElderlyMonthlyReport = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const existingReport = await ElderlyMonthlyReport.findById(id);
+
+    if (!existingReport) {
+      res.status(404).json({ message: "Not found." });
+      return;
+    }
+
+    const updatedReport = await ElderlyMonthlyReport.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          kabupaten: req.body?.kabupaten,
+          bulanTahun: req.body?.bulanTahun,
+          worksheets: req.body?.worksheets,
+          puskesmas: req.body?.puskesmas,
+          desa: req.body?.desa,
+          metaPairs: req.body?.metaPairs,
+          headerKeys: req.body?.headerKeys,
+          headerLabels: req.body?.headerLabels,
+          headerOrder: req.body?.headerOrder,
+          rowData: req.body?.rowData,
+          fileName: req.body?.fileName,
+          sourceSheetName: req.body?.sourceSheetName,
+          status: req.body?.status || existingReport.status || "imported",
+        },
+      },
+      { new: true, runValidators: true }
+    ).populate("createdBy", "firstName middleName lastName email");
+
+    if (!updatedReport) {
+      res.status(404).json({ message: "Not found." });
+      return;
+    }
+
+    const reportObjectId = existingReport._id;
+
+    await ElderlyPerson.updateMany(
+      { "sources.report": reportObjectId },
+      { $pull: { sources: { report: reportObjectId } } }
+    );
+    await ElderlyPerson.deleteMany({ sources: { $size: 0 } });
+    await ElderlyPerson.updateMany(
+      { lastReport: reportObjectId },
+      { $unset: { lastReport: "", lastBulanTahun: "" } }
+    );
+
+    await upsertPersonsFromReport(updatedReport);
+
+    await logActivity({
+      userId: req.user?.id,
+      action: "file_update",
+      details: "Memperbarui file laporan bulanan",
+      metadata: {
+        reportId: String(updatedReport._id),
+        fileName: updatedReport.fileName || null,
+        bulanTahun: updatedReport.bulanTahun || null,
+        kabupaten: updatedReport.kabupaten || null,
+      },
+    });
+
+    res.status(200).json({ message: "Updated", reportId: updatedReport._id, report: updatedReport });
+  } catch (e) {
+    console.error("updateElderlyMonthlyReport error:", e);
+    res.status(500).json({ message: "Server error updating report." });
+  }
+};
+
 export const downloadElderlyMonthlyReport = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const doc: any = await ElderlyMonthlyReport.findById(id).lean();
+    const doc: any = await ElderlyMonthlyReport.findById(id)
+      .populate("createdBy", "firstName middleName lastName email")
+      .lean();
 
     if (!doc) {
       res.status(404).json({ message: "Not found." });
@@ -689,9 +763,61 @@ export const downloadElderlyMonthlyReport = async (
       worksheets: normalizedWorksheets,
     };
 
-    const buffer = await generateMonthlyReportExcel(payload);
-    const safeBulanTahun = payload.bulanTahun.replace(/\s+/g, "_") || "Report";
-    const filename = `Laporan_Bulanan_${safeBulanTahun}.xlsx`;
+    const yearMatch = payload.bulanTahun.match(/\d{4}/);
+    const reportYear = yearMatch ? yearMatch[0] : String(new Date().getFullYear());
+    const monthIndex = findMonthIndex(payload.bulanTahun);
+
+    const mergedRows = normalizedWorksheets.flatMap((ws: any) => ws.rowData || []);
+    const mergedHeaderKeys = normalizedWorksheets[0]?.headerKeys || [];
+    const puskesmasValue = String(normalizedWorksheets[0]?.puskesmas || doc.puskesmas || "-").trim() || "-";
+
+    const monthSheetsB: Array<MonthSheetB | null> = Array(12).fill(null);
+    const targetIndex = monthIndex >= 0 && monthIndex <= 11 ? monthIndex : 0;
+    monthSheetsB[targetIndex] = {
+      bulanTahun: payload.bulanTahun,
+      puskesmas: puskesmasValue,
+      rows: mergedRows,
+      headerKeys: mergedHeaderKeys,
+    };
+
+    const buffer = await generateAnnualReportB({
+      year: reportYear,
+      kabupaten: payload.kabupaten || "-",
+      puskesmas: puskesmasValue,
+      monthSheets: monthSheetsB,
+    });
+
+    const uploadedFileName = String(doc.fileName || "Laporan_Bulanan.xlsx").trim();
+    const dotIdx = uploadedFileName.lastIndexOf(".");
+    const baseName = dotIdx > 0 ? uploadedFileName.slice(0, dotIdx) : uploadedFileName;
+
+    const uploaderRaw = doc?.createdBy
+      ? [doc.createdBy.firstName, doc.createdBy.middleName, doc.createdBy.lastName].filter(Boolean).join(" ").trim() || doc.createdBy.email || "Unknown"
+      : "Unknown";
+
+    const uploadedAt = doc.submittedAt || doc.createdAt || new Date();
+    const dt = new Date(uploadedAt);
+    const timestamp = Number.isNaN(dt.getTime())
+      ? String(Date.now())
+      : [
+          dt.getFullYear(),
+          String(dt.getMonth() + 1).padStart(2, "0"),
+          String(dt.getDate()).padStart(2, "0"),
+          String(dt.getHours()).padStart(2, "0"),
+          String(dt.getMinutes()).padStart(2, "0"),
+          String(dt.getSeconds()).padStart(2, "0"),
+        ].join("");
+
+    const sanitizePart = (value: string) =>
+      value
+        .replace(/[\\/:*?"<>|]/g, "_")
+        .replace(/\s+/g, "_")
+        .replace(/_+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .trim() || "Unknown";
+
+    const finalBase = `${sanitizePart(baseName)}_${sanitizePart(String(uploaderRaw))}_${timestamp}`;
+    const filename = `${finalBase}.xlsx`;
 
     res.setHeader(
       "Content-Type",
