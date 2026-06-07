@@ -51,6 +51,11 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
   const [desaDraftByReportId, setDesaDraftByReportId] = useState<Record<string, string>>({});
   const [desaSaveErrorByReportId, setDesaSaveErrorByReportId] = useState<Record<string, string>>({});
   const [desaSaveSuccessByReportId, setDesaSaveSuccessByReportId] = useState<Record<string, string>>({});
+  const [editReport, setEditReport] = useState<any | null>(null);
+  const [editReportMonth, setEditReportMonth] = useState("JANUARI");
+  const [editReportYear, setEditReportYear] = useState("");
+  const [editReportDesa, setEditReportDesa] = useState("");
+  const [savingReportDate, setSavingReportDate] = useState(false);
   const [viewUser, setViewUser] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
   const [editForm, setEditForm] = useState({ firstName: "", middleName: "", lastName: "", email: "", role: "officer", phone: "", workLocation: "" });
@@ -268,6 +273,94 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
       },
       scrollY: typeof window !== "undefined" ? window.scrollY : 0,
     });
+  };
+
+  const handleOpenEditReportDate = (report: any) => {
+    const fallbackYear = String(new Date().getFullYear());
+    const currentDesa = String(report?.desa || report?.worksheets?.[0]?.desa || "")
+      .replace(/^:\s*/, "")
+      .trim();
+    setEditReport(report);
+    setEditReportMonth(getReportMonth(report) || "JANUARI");
+    setEditReportYear(getReportYear(report) || fallbackYear);
+    setEditReportDesa(currentDesa);
+  };
+
+  const handleSaveReportDate = async () => {
+    const reportId = String(editReport?._id || "");
+    const month = String(editReportMonth || "").trim().toUpperCase();
+    const year = String(editReportYear || "").trim();
+    const desa = String(editReportDesa || "").replace(/^:\s*/, "").trim();
+    const desaOptions = editReport ? getDesaOptionsForReport(editReport) : [];
+
+    if (!reportId) return;
+    if (!MONTH_OPTIONS.includes(month)) {
+      alert("Bulan tidak valid.");
+      return;
+    }
+    if (!/^\d{4}$/.test(year)) {
+      alert("Tahun harus 4 digit.");
+      return;
+    }
+    if (desaOptions.length === 0) {
+      alert("Daftar desa untuk kabupaten ini belum dikonfigurasi.");
+      return;
+    }
+    if (!desa || !desaOptions.includes(desa)) {
+      alert("Pilih desa dari daftar konfigurasi.");
+      return;
+    }
+
+    const bulanTahun = `${month} ${year}`;
+    setSavingReportDate(true);
+    try {
+      const { data } = await api.get(`/elderly-reports/${reportId}`);
+      const item = data?.item;
+      if (!item) throw new Error("Data laporan tidak ditemukan");
+
+      const existingWorksheets = Array.isArray(item.worksheets) ? item.worksheets : [];
+      const updatedWorksheets = existingWorksheets.map((ws: any) => ({
+        ...ws,
+        bulanTahun,
+        desa,
+      }));
+
+      await api.put(`/elderly-reports/${reportId}`, {
+        kabupaten: item.kabupaten,
+        bulanTahun,
+        worksheets: updatedWorksheets,
+        puskesmas: item.puskesmas,
+        desa,
+        metaPairs: item.metaPairs,
+        headerKeys: item.headerKeys,
+        headerLabels: item.headerLabels,
+        headerOrder: item.headerOrder,
+        rowData: item.rowData,
+        fileName: item.fileName,
+        sourceSheetName: item.sourceSheetName,
+        status: item.status || "imported",
+      });
+
+      setRecentReports((prev) =>
+        prev.map((r) => {
+          if (String(r?._id || "") !== reportId) return r;
+          const rowWorksheets = Array.isArray(r?.worksheets) ? r.worksheets : [];
+          return {
+            ...r,
+            bulanTahun,
+            desa,
+            worksheets: rowWorksheets.map((ws: any) => ({ ...ws, bulanTahun, desa })),
+          };
+        })
+      );
+
+      setEditReport(null);
+      alert("Bulan/Tahun dan desa laporan berhasil diperbarui.");
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || "Gagal memperbarui Bulan/Tahun/desa laporan.");
+    } finally {
+      setSavingReportDate(false);
+    }
   };
 
   const getReportKabupaten = (report: any) => {
@@ -558,7 +651,7 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
                 <SelectContent>
                   <SelectItem value="all">Semua bulan</SelectItem>
                   {MONTH_OPTIONS.map((m) => (
-                    <SelectItem key={m} value={m}>{m.charAt(0) + m.slice(1).toLowerCase()}</SelectItem>
+                    <SelectItem key={m} value={m}>{m}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -658,6 +751,15 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
                             title="Lihat data upload"
                           >
                             <Eye className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`h-7 w-7 ${btnAnim}`}
+                            onClick={() => handleOpenEditReportDate(r)}
+                            title="Edit bulan/tahun"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -806,6 +908,80 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
             <Button variant="outline" disabled={savingEditUser} onClick={() => setEditUser(null)}>Batal</Button>
             <Button disabled={savingEditUser} onClick={() => void handleSaveEditUser()}>{savingEditUser ? "Menyimpan..." : "Simpan"}</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editReport)}
+        onOpenChange={(open) => {
+          if (!open && !savingReportDate) setEditReport(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px] w-[90vw]">
+          {(() => {
+            const editReportDesaOptions = editReport ? getDesaOptionsForReport(editReport) : [];
+            const editDesaValue = editReportDesaOptions.includes(editReportDesa) ? editReportDesa : "";
+            return (
+              <>
+          <DialogHeader>
+            <DialogTitle>Edit Bulan/Tahun dan Desa</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-sm">Bulan</Label>
+              <Select value={editReportMonth} onValueChange={setEditReportMonth}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pilih bulan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTH_OPTIONS.map((m) => (
+                    <SelectItem key={m} value={m}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-sm">Tahun</Label>
+              <Input
+                inputMode="numeric"
+                maxLength={4}
+                placeholder="Contoh: 2026"
+                value={editReportYear}
+                onChange={(e) => setEditReportYear(e.target.value.replace(/[^0-9]/g, ""))}
+              />
+            </div>
+            <div className="space-y-1.5 pb-2">
+              <Label className="text-sm">Desa</Label>
+              <Select value={editDesaValue} onValueChange={setEditReportDesa} disabled={editReportDesaOptions.length === 0}>
+                <SelectTrigger>
+                  <SelectValue placeholder={editReportDesaOptions.length === 0 ? "Belum ada konfigurasi desa" : "Pilih desa"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {editReportDesaOptions.map((opt: string) => (
+                    <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editReportDesaOptions.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Tambahkan konfigurasi desa untuk kabupaten ini di bagian "Konfigurasi Kabupaten - Desa".
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" disabled={savingReportDate} onClick={() => setEditReport(null)}>
+              Batal
+            </Button>
+            <Button disabled={savingReportDate} onClick={() => void handleSaveReportDate()}>
+              {savingReportDate ? "Menyimpan..." : "Simpan"}
+            </Button>
+          </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
