@@ -19,6 +19,7 @@ export default function App() {
     reportYearFilter: "all",
     reportMonthFilter: "all",
   });
+  const [selectedReportOrigin, setSelectedReportOrigin] = useState<"admin" | "account">("admin");
   const [adminReportsScrollY, setAdminReportsScrollY] = useState(0);
   const [pendingAdminRestoreScrollY, setPendingAdminRestoreScrollY] = useState<number | null>(null);
 
@@ -83,7 +84,7 @@ export default function App() {
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-            <p className="mt-4 text-lg">Memuat...</p>
+            <p className="mt-4 text-lg">Loading...</p>
           </div>
         </div>
       );
@@ -135,7 +136,19 @@ export default function App() {
         );
 
       case "account":
-        return <UserProfile />;
+        return (
+          <UserProfile
+            onNavigate={(page, state) => {
+              if (page === "uploaded-data-view") {
+                setSelectedReportId(state?.reportId || null);
+                setSelectedReportOrigin("account");
+                setCurrentPage("uploaded-data-view");
+                return;
+              }
+              setCurrentPage(page);
+            }}
+          />
+        );
 
       case "users":
         if (user?.role !== "admin" && user?.role !== "superadmin") {
@@ -154,6 +167,7 @@ export default function App() {
             onNavigate={(page, state) => {
               if (page === "uploaded-data-view") {
                 setSelectedReportId(state?.reportId || null);
+                setSelectedReportOrigin("admin");
                 if (state?.reportsViewState) {
                   setAdminReportsViewState(state.reportsViewState);
                 }
@@ -169,10 +183,18 @@ export default function App() {
         );
 
       case "uploaded-data-view":
-        if (user?.role !== "admin" && user?.role !== "superadmin") {
+        if (selectedReportOrigin === "admin" && user?.role !== "admin" && user?.role !== "superadmin") {
           return (
             <Dashboard
               userStatus={isAuthed ? "authenticated" : "guest"}
+              onLoginClick={() => setCurrentPage("login")}
+            />
+          );
+        }
+        if (!isAuthed) {
+          return (
+            <Dashboard
+              userStatus="guest"
               onLoginClick={() => setCurrentPage("login")}
             />
           );
@@ -181,8 +203,12 @@ export default function App() {
           <UploadedDataViewPage
             reportId={selectedReportId}
             onBack={() => {
-              setPendingAdminRestoreScrollY(adminReportsScrollY);
-              setCurrentPage("users");
+              if (selectedReportOrigin === "admin") {
+                setPendingAdminRestoreScrollY(adminReportsScrollY);
+                setCurrentPage("users");
+              } else {
+                setCurrentPage("account");
+              }
             }}
           />
         );

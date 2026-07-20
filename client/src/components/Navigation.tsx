@@ -17,12 +17,12 @@ export function Navigation({ currentPage, onPageChange, isAuthed, userRole, onSh
   };
 
   const publicNavItems = [
-    { id: 'dashboard', label: 'Dasbor', icon: Home },
+    { id: 'dashboard', label: 'Home', icon: Home },
     { id: 'help', label: 'Bantuan', icon: HelpCircle },
   ];
 
   const authenticatedNavItems = [
-    { id: 'dashboard', label: 'Dasbor', icon: Home },
+    { id: 'dashboard', label: 'Home', icon: Home },
     { id: 'upload', label: 'Unggah', icon: Upload },
     { id: 'preview', label: 'Pratinjau', icon: FileText },
     { id: 'account', label: 'Akun', icon: User },

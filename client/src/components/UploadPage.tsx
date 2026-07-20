@@ -385,7 +385,7 @@ export function UploadPage({ onNavigate }: UploadPageProps) {
                 <SelectContent>
                   {pendingWorksheets.map((worksheet, idx) => (
                     <SelectItem key={worksheet.worksheetName} value={String(idx)}>
-                      {worksheet.worksheetName} — {worksheet.puskesmas || "-"} | {worksheet.bulanTahun || "-"}
+                      {worksheet.worksheetName} - {worksheet.puskesmas || "-"} | {worksheet.bulanTahun || "-"}
                     </SelectItem>
                   ))}
                 </SelectContent>

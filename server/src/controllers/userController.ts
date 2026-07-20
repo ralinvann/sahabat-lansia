@@ -5,6 +5,50 @@ import { signUser } from "../utils/jwt";
 import { uploadBufferToCloudinary } from "../utils/cloudinaryUpload";
 import { logActivity } from "../utils/activityLogger";
 
+function serializeTrackingStats(trackingStats: any) {
+  const yearly = Array.isArray(trackingStats?.yearly)
+    ? trackingStats.yearly.map((entry: any) => ({
+        year: String(entry?.year ?? "").trim(),
+        totalUniqueElderly: Number(entry?.totalUniqueElderly ?? 0),
+        monthlyCounts: Array.isArray(entry?.monthlyCounts)
+          ? entry.monthlyCounts
+              .map((monthEntry: any) => ({
+                month: Number(monthEntry?.month ?? 0),
+                count: Number(monthEntry?.count ?? 0),
+              }))
+              .filter((monthEntry: { month: number; count: number }) => monthEntry.month >= 1 && monthEntry.month <= 12)
+              .sort((a: { month: number; count: number }, b: { month: number; count: number }) => a.month - b.month)
+          : [],
+        updatedAt: entry?.updatedAt,
+      }))
+      .filter((entry: { year: string }) => Boolean(entry.year))
+      .sort((a: { year: string }, b: { year: string }) => b.year.localeCompare(a.year))
+    : [];
+
+  return {
+    yearly,
+    updatedAt: trackingStats?.updatedAt,
+  };
+}
+
+function toUserResponse(user: any) {
+  return {
+    id: user._id,
+    firstName: user.firstName,
+    middleName: user.middleName,
+    lastName: user.lastName,
+    email: user.email,
+    role: user.role,
+    profilePicture: user.profilePicture,
+    phone: user.phone,
+    workLocation: user.workLocation,
+    lastLoginAt: user.lastLoginAt,
+    lastLoginIP: user.lastLoginIP,
+    createdAt: user.createdAt,
+    trackingStats: serializeTrackingStats(user.trackingStats),
+  };
+}
+
 /**
  * @route POST /api/users/register
  * @desc Register a new user (public/officer only)
@@ -59,18 +103,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     res.status(201).json({
       token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        middleName: user.middleName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-        profilePicture: user.profilePicture,
-        phone: user.phone,
-        workLocation: user.workLocation,
-        createdAt: user.createdAt,
-      },
+      user: toUserResponse(user),
     });
     return;
   } catch (err) {
@@ -113,18 +146,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     res.status(200).json({
       token,
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        middleName: user.middleName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-        profilePicture: user.profilePicture,
-        phone: user.phone,
-        workLocation: user.workLocation,
-        createdAt: user.createdAt,
-      },
+      user: toUserResponse(user),
     });
     return;
   } catch (err) {
@@ -148,7 +170,7 @@ export const me = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    res.status(200).json(user);
+    res.status(200).json(toUserResponse(user));
     return;
   } catch (err) {
     console.error("me error:", err);
@@ -199,7 +221,7 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       });
     }
 
-    res.status(200).json(updated);
+    res.status(200).json(toUserResponse(updated));
     return;
   } catch (err) {
     console.error("updateProfile error:", err);
@@ -286,7 +308,7 @@ export const uploadAvatar = async (req: Request, res: Response): Promise<void> =
       metadata: { type: "avatar" },
     });
 
-    res.status(200).json(updated);
+    res.status(200).json(toUserResponse(updated));
     return;
   } catch (err) {
     console.error("uploadAvatar error:", err);
@@ -375,18 +397,7 @@ export const createUserByAdmin = async (req: Request, res: Response): Promise<vo
 
     res.status(201).json({
       message: "User created successfully",
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        middleName: user.middleName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-        profilePicture: user.profilePicture,
-        phone: user.phone,
-        workLocation: user.workLocation,
-        createdAt: user.createdAt,
-      },
+      user: toUserResponse(user),
     });
     return;
   } catch (err) {

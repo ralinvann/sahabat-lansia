@@ -69,7 +69,7 @@ app.get('/home', (req: Request, res: Response) => {
 
 app.use('/api', apiRoutes);
 
-// catch‑all 404 handler (helps avoid hanging when client requests unknown path)
+// catch-all 404 handler (helps avoid hanging when client requests unknown path)
 app.use((req, res) => {
   res.status(404).json({ message: 'Not Found' });
 });

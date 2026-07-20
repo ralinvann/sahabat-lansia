@@ -148,7 +148,7 @@ export function Dashboard({ userStatus, onLoginClick }: DashboardProps) {
           const { data } = await api.get<DashboardData>("/elderly-reports/dashboard");
           setDashboardData(data);
         } catch (e: any) {
-          const msg = e?.response?.data?.message || "Gagal memuat data dashboard.";
+          const msg = e?.response?.data?.message || "Gagal loading data dashboard.";
           setDashboardError(msg);
           setDashboardData(defaultDashboardData);
         }
@@ -314,7 +314,7 @@ export function Dashboard({ userStatus, onLoginClick }: DashboardProps) {
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h2 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Dasbor Utama</h2>
+          <h2 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Home Utama</h2>
           <p className="text-sm text-muted-foreground mt-1">
             Ringkasan aktivitas kesehatan lansia hari ini
             {userStatus === "guest" && (
@@ -364,7 +364,7 @@ export function Dashboard({ userStatus, onLoginClick }: DashboardProps) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="shadow-sm border-l-4 border-l-primary">
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">Pra-Lansia (45–59 thn)</p>
+            <p className="text-xs text-muted-foreground mb-1">Pra-Lansia (45-59 thn)</p>
             <p className="text-2xl text-primary" style={{ fontWeight: 700 }}>{loading ? "..." : compactNumber(dashboardData.totalPraLansia)}</p>
             <p className="text-xs text-muted-foreground mt-1">orang terdaftar</p>
           </CardContent>
@@ -567,9 +567,9 @@ export function Dashboard({ userStatus, onLoginClick }: DashboardProps) {
           <CardContent>
             <div className="space-y-4 pt-1">
               {[
-                { label: "Level A – Mandiri", value: dashboardData.independenceLevels.A, color: CHART_COLORS.primary },
-                { label: "Level B – Perlu Bantuan", value: dashboardData.independenceLevels.B, color: CHART_COLORS.secondary },
-                { label: "Level C – Ketergantungan", value: dashboardData.independenceLevels.C, color: CHART_COLORS.tertiary },
+                { label: "Level A - Mandiri", value: dashboardData.independenceLevels.A, color: CHART_COLORS.primary },
+                { label: "Level B - Perlu Bantuan", value: dashboardData.independenceLevels.B, color: CHART_COLORS.secondary },
+                { label: "Level C - Ketergantungan", value: dashboardData.independenceLevels.C, color: CHART_COLORS.tertiary },
               ].map(({ label, value, color }) => (
                 <div key={label}>
                   <div className="flex justify-between items-center mb-1">

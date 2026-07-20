@@ -20,7 +20,7 @@ router.get("/", getElderlyMonthlyReports);
 
 router.get("/dashboard", ElderlyMonthlyReportController.getDashboardData);
 
-// Annual report downloads — must come before /:id routes
+// Annual report downloads - must come before /:id routes
 router.get("/annual/:year/report-a", downloadAnnualReportA);
 router.get("/annual/:year/report-b", downloadAnnualReportB);
 

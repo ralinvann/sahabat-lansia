@@ -3,6 +3,23 @@ import { api } from "../lib/api";
 
 export type Role = "superadmin" | "admin" | "officer";
 
+export interface ITrackingMonthStat {
+  month: number;
+  count: number;
+}
+
+export interface ITrackingYearStat {
+  year: string;
+  totalUniqueElderly: number;
+  monthlyCounts: ITrackingMonthStat[];
+  updatedAt?: string;
+}
+
+export interface ITrackingStats {
+  yearly: ITrackingYearStat[];
+  updatedAt?: string;
+}
+
 export interface IUser {
   id: string;
   firstName: string;
@@ -17,6 +34,7 @@ export interface IUser {
   lastLoginAt?: string;
   lastLoginIP?: string;
   lastUserAgent?: string;
+  trackingStats?: ITrackingStats;
 }
 
 export function useAuth() {
@@ -61,6 +79,28 @@ export function useAuth() {
       lastLoginAt: raw.lastLoginAt,
       lastLoginIP: raw.lastLoginIP,
       lastUserAgent: raw.lastUserAgent,
+      trackingStats: {
+        yearly: Array.isArray(raw.trackingStats?.yearly)
+          ? raw.trackingStats.yearly
+              .map((entry: any) => ({
+                year: String(entry?.year ?? "").trim(),
+                totalUniqueElderly: Number(entry?.totalUniqueElderly ?? 0),
+                monthlyCounts: Array.isArray(entry?.monthlyCounts)
+                  ? entry.monthlyCounts
+                      .map((monthEntry: any) => ({
+                        month: Number(monthEntry?.month ?? 0),
+                        count: Number(monthEntry?.count ?? 0),
+                      }))
+                      .filter((monthEntry: ITrackingMonthStat) => monthEntry.month >= 1 && monthEntry.month <= 12)
+                      .sort((a: ITrackingMonthStat, b: ITrackingMonthStat) => a.month - b.month)
+                  : [],
+                updatedAt: entry?.updatedAt,
+              }))
+              .filter((entry: ITrackingYearStat) => Boolean(entry.year))
+              .sort((a: ITrackingYearStat, b: ITrackingYearStat) => b.year.localeCompare(a.year))
+          : [],
+        updatedAt: raw.trackingStats?.updatedAt,
+      },
     };
   }
 
@@ -73,7 +113,8 @@ export function useAuth() {
   const login = useCallback(async (email: string, password: string, remember = false) => {
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/login", { email, password, remember });
+      await api.post("/auth/login", { email, password, remember });
+      const { data } = await api.get("/auth/me");
       const nextUser = extractUser(data);
       persist(nextUser);
       setReady(true);

@@ -7,6 +7,33 @@ import cloudinary from "../config/cloudinary";
 import { requireAuth } from "../middleware/auth";
 import { logActivity } from "../utils/activityLogger";
 import { sendEmail } from "../utils/sendEmail";
+import { recomputeWorkerTrackingStats } from "../utils/workerTrackingStats";
+
+function serializeTrackingStats(trackingStats: any) {
+  const yearly = Array.isArray(trackingStats?.yearly)
+    ? trackingStats.yearly.map((entry: any) => ({
+        year: String(entry?.year ?? "").trim(),
+        totalUniqueElderly: Number(entry?.totalUniqueElderly ?? 0),
+        monthlyCounts: Array.isArray(entry?.monthlyCounts)
+          ? entry.monthlyCounts
+              .map((monthEntry: any) => ({
+                month: Number(monthEntry?.month ?? 0),
+                count: Number(monthEntry?.count ?? 0),
+              }))
+              .filter((monthEntry: { month: number; count: number }) => monthEntry.month >= 1 && monthEntry.month <= 12)
+              .sort((a: { month: number; count: number }, b: { month: number; count: number }) => a.month - b.month)
+          : [],
+        updatedAt: entry?.updatedAt,
+      }))
+      .filter((entry: { year: string }) => Boolean(entry.year))
+      .sort((a: { year: string }, b: { year: string }) => b.year.localeCompare(a.year))
+    : [];
+
+  return {
+    yearly,
+    updatedAt: trackingStats?.updatedAt,
+  };
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || "devsecret";
 
@@ -89,6 +116,7 @@ export const signup = async (req: Request, res: Response): Promise<void> => {
         profilePicture: user.profilePicture,
         phone: user.phone,
         workLocation: user.workLocation,
+        trackingStats: serializeTrackingStats(user.trackingStats),
       },
     });
   } catch (err) {
@@ -153,6 +181,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         workLocation: user.workLocation,
         lastLoginAt: user.lastLoginAt,
         lastLoginIP: user.lastLoginIP,
+        trackingStats: serializeTrackingStats(user.trackingStats),
       },
     });
   } catch (err) {
@@ -193,10 +222,19 @@ export const getCurrentUser = async (
       return;
     }
 
-    const user = await User.findById(req.user.id);
+    let user = await User.findById(req.user.id);
     if (!user) {
       res.status(404).json({ message: "User not found" });
       return;
+    }
+
+    if (!user.trackingStats?.updatedAt) {
+      await recomputeWorkerTrackingStats(String(user._id));
+      user = await User.findById(req.user.id);
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
     }
 
     res.status(200).json({
@@ -213,6 +251,7 @@ export const getCurrentUser = async (
         lastLoginAt: user.lastLoginAt,
         lastLoginIP: user.lastLoginIP,
         createdAt: user.createdAt,
+        trackingStats: serializeTrackingStats(user.trackingStats),
       },
     });
   } catch (err) {

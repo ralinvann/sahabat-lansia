@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "./ui/dialog";
 import { Label } from "./ui/label";
-import { Users, Shield, Activity, Search, UserPlus, Settings, Eye, Edit3, Trash2, Loader, ArrowUpDown, ArrowUp, ArrowDown, Download } from "lucide-react";
+import { Activity, Search, UserPlus, Eye, Edit3, Trash2, Loader, ArrowUpDown, ArrowUp, ArrowDown, Download } from "lucide-react";
 import { AddUserDialog } from "./AddUserDialog";
 import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
@@ -74,7 +74,7 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
         setLocationConfigs(Array.isArray(locsRes.data?.items) ? locsRes.data.items : []);
         setRecentReports(Array.isArray(reportsRes.data?.items) ? reportsRes.data.items : []);
       } catch (err: any) {
-        setError(err.response?.data?.message || "Gagal memuat data pengguna");
+        setError(err.response?.data?.message || "Gagal loading data pengguna");
       } finally { setIsLoading(false); }
     };
     if (ready && user && ALLOWED_ROLES.has(String(user.role || "").toUpperCase())) fetchUsers();
@@ -205,7 +205,7 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
   };
 
   const handleDeleteReport = async (report: any) => {
-    const label = `${report.bulanTahun || "-"} — ${report.kabupaten || "-"}`;
+    const label = `${report.bulanTahun || "-"} - ${report.kabupaten || "-"}`;
     if (!confirm(`Hapus laporan "${label}" beserta semua data terkait?\nTindakan ini tidak dapat dibatalkan.`)) return;
     setDeletingReportId(report._id);
     try {
@@ -490,19 +490,12 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
     });
   }, [recentReports, reportSearch, reportYearFilter, reportMonthFilter]);
 
-  if (!ready) return <div className="p-6 text-sm text-muted-foreground">Memuat data...</div>;
+  if (!ready) return <div className="p-6 text-sm text-muted-foreground">Loading data...</div>;
   if (!user || !ALLOWED_ROLES.has(String(user.role || "").toUpperCase())) return (
     <div className="p-6"><Card className="shadow-sm"><CardHeader><CardTitle>Akses Ditolak</CardTitle></CardHeader><CardContent className="text-sm">Anda tidak memiliki izin untuk halaman ini.</CardContent></Card></div>
   );
 
   const displayUsers = isLoading ? [] : filteredAndSortedUsers;
-
-  const systemStats = [
-    { title: "Total Pengguna", value: "24", subtitle: "4 aktif hari ini", icon: Users, color: "text-blue-600", bgColor: "bg-blue-50" },
-    { title: "Data Lansia", value: "14,500", subtitle: "892 ditambah bulan ini", icon: Activity, color: "text-green-600", bgColor: "bg-green-50" },
-    { title: "Akses Harian", value: "156", subtitle: "Login hari ini", icon: Eye, color: "text-orange-600", bgColor: "bg-orange-50" },
-    { title: "Sistem", value: "99.9%", subtitle: "Uptime bulan ini", icon: Shield, color: "text-purple-600", bgColor: "bg-purple-50" },
-  ];
 
   const getLastLoginLogs = () => fetchedUsers
     .filter((u) => u.lastLoginAt)
@@ -518,30 +511,8 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
           <p className="text-sm text-muted-foreground mt-1">Kelola pengguna, sistem, dan keamanan</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className={`gap-2 ${btnAnim}`}><Settings className="w-4 h-4" />Pengaturan</Button>
           <Button onClick={() => setIsAddUserDialogOpen(true)} className={`gap-2 ${btnAnim}`}><UserPlus className="w-4 h-4" />Tambah Pengguna</Button>
         </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {systemStats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={index} className="shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm text-muted-foreground">{stat.title}</CardTitle>
-                  <div className={`p-2.5 rounded-full ${stat.bgColor}`}><Icon className={`w-5 h-5 ${stat.color}`} /></div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div style={{ fontSize: "1.75rem", fontWeight: 700 }} className="mb-1">{stat.value}</div>
-                <p className="text-sm text-muted-foreground">{stat.subtitle}</p>
-              </CardContent>
-            </Card>
-          );
-        })}
       </div>
 
       {/* User Table */}
@@ -558,7 +529,7 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
         <CardContent>
           {error && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
           {isLoading ? (
-            <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Memuat...</span></div>
+            <div className="flex items-center justify-center py-10"><Loader className="w-5 h-5 animate-spin text-muted-foreground" /><span className="ml-2 text-sm text-muted-foreground">Loading...</span></div>
           ) : displayUsers.length === 0 ? (
             <div className="text-center py-10 text-sm text-muted-foreground">Tidak ada pengguna ditemukan</div>
           ) : (

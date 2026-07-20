@@ -21,8 +21,38 @@ export interface IUser extends Document {
     userAgent?: string;
     ip?: string;
   }>;
+  trackingStats?: {
+    yearly: Array<{
+      year: string;
+      totalUniqueElderly: number;
+      monthlyCounts: Array<{
+        month: number;
+        count: number;
+      }>;
+      updatedAt: Date;
+    }>;
+    updatedAt?: Date;
+  };
   createdAt: Date;
 }
+
+const TrackingMonthStatSchema = new Schema(
+  {
+    month: { type: Number, required: true, min: 1, max: 12 },
+    count: { type: Number, required: true, min: 0, default: 0 },
+  },
+  { _id: false }
+);
+
+const TrackingYearStatSchema = new Schema(
+  {
+    year: { type: String, required: true, trim: true },
+    totalUniqueElderly: { type: Number, required: true, min: 0, default: 0 },
+    monthlyCounts: { type: [TrackingMonthStatSchema], default: [] },
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
 
 const userSchema = new Schema<IUser>({
   firstName: { type: String, required: true },
@@ -51,6 +81,10 @@ const userSchema = new Schema<IUser>({
       ip: { type: String },
     },
   ],
+  trackingStats: {
+    yearly: { type: [TrackingYearStatSchema], default: [] },
+    updatedAt: { type: Date },
+  },
   createdAt: { type: Date, default: Date.now },
 });
 

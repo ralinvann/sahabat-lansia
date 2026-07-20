@@ -52,7 +52,6 @@ type ReportDocument = {
   createdAt?: string;
 };
 
-const ALLOWED_ROLES = new Set(["ADMIN", "SUPERADMIN"]);
 const btnAnim = "transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]";
 
 function excelSerialToDate(serial: number): Date {
@@ -205,14 +204,22 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
       try {
         const { data } = await api.get(`/elderly-reports/${reportId}`);
         if (cancelled) return;
-        setReport(data?.item || null);
-        setEditedDesa(String(data?.item?.desa ?? data?.item?.worksheets?.[0]?.desa ?? "").trim());
+        const item = data?.item || null;
+        const role = String(user?.role || "").toUpperCase();
+        const creatorId = String(item?.createdBy?._id ?? item?.createdBy?.id ?? "").trim();
+        if (role === "OFFICER" && creatorId && creatorId !== user?.id) {
+          setReport(null);
+          setError("Akses ditolak untuk laporan ini.");
+          return;
+        }
+        setReport(item);
+        setEditedDesa(String(item?.desa ?? item?.worksheets?.[0]?.desa ?? "").trim());
         setIsEditing(false);
         setEditedRows({});
         setRowSearch("");
       } catch (err: any) {
         if (cancelled) return;
-        setError(err?.response?.data?.message || "Gagal memuat detail data upload.");
+        setError(err?.response?.data?.message || "Gagal loading detail data upload.");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -223,7 +230,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
     return () => {
       cancelled = true;
     };
-  }, [reportId]);
+  }, [reportId, user?.id, user?.role]);
 
   const activeWorksheet = useMemo(() => normalizeWorksheet(report), [report]);
 
@@ -479,10 +486,10 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
   const reporterName = getReporterName(report);
   const uploadedAt = report?.submittedAt || report?.createdAt;
 
-  const authDenied = ready && (!user || !ALLOWED_ROLES.has(String(user.role || "").toUpperCase()));
+  const authDenied = ready && !user;
 
   if (!ready) {
-    return <div className="p-6 text-sm text-muted-foreground">Memuat data...</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Loading data...</div>;
   }
 
   if (authDenied) {
@@ -503,7 +510,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 style={{ fontSize: "1.5rem", fontWeight: 600 }}>Lihat Data Upload</h2>
-          <p className="text-sm text-muted-foreground mt-1">Halaman ini hanya untuk admin/superadmin.</p>
+          <p className="text-sm text-muted-foreground mt-1">Pratinjau data file yang sudah diunggah.</p>
         </div>
         <Button className={`gap-2 ${btnAnim}`} onClick={onBack}>
           <ArrowLeft className="w-4 h-4" />
@@ -514,7 +521,7 @@ export function UploadedDataViewPage({ reportId, onBack }: UploadedDataViewPageP
       {loading ? (
         <Card className="shadow-sm">
           <CardContent className="py-10 flex items-center justify-center text-sm text-muted-foreground">
-            <Loader className="w-4 h-4 animate-spin mr-2" /> Memuat data laporan...
+            <Loader className="w-4 h-4 animate-spin mr-2" /> Loading data laporan...
           </CardContent>
         </Card>
       ) : error ? (

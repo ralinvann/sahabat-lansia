@@ -380,7 +380,7 @@ export function LoginScreen({ onLogin, onBack, onGuest }: LoginScreenProps) {
                   onClick={onGuest}
                   disabled={submitting}
                 >
-                  Kembali ke Dasbor
+                  Kembali ke Home
                 </Button>
               </div>
             </div>

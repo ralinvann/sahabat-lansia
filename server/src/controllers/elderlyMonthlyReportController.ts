@@ -12,6 +12,7 @@ import {
   type MonthSheetB,
 } from "../utils/generateAnnualReportB";
 import { logActivity } from "../utils/activityLogger";
+import { recomputeWorkerTrackingStats } from "../utils/workerTrackingStats";
 
 type IndividualRecord = Record<string, any>;
 
@@ -427,6 +428,7 @@ export const createElderlyMonthlyReport = async (
               `Sheet${index + 1}`,
             puskesmas:
               String(ws?.puskesmas ?? req.body?.puskesmas ?? "-").trim() || "-",
+            desa: String(ws?.desa ?? req.body?.desa ?? "").trim(),
             kabupaten: String(ws?.kabupaten ?? topKabupaten).trim(),
             bulanTahun: String(ws?.bulanTahun ?? topBulanTahun).trim(),
             metaPairs: Array.isArray(ws?.metaPairs) ? ws.metaPairs : [],
@@ -465,6 +467,7 @@ export const createElderlyMonthlyReport = async (
         bulanTahun: docBulanTahun,
         worksheets: normalizedWorksheets,
         puskesmas: firstWs.puskesmas,
+        desa: firstWs.desa,
         metaPairs: firstWs.metaPairs,
         headerKeys: firstWs.headerKeys,
         headerLabels: firstWs.headerLabels,
@@ -478,6 +481,7 @@ export const createElderlyMonthlyReport = async (
       });
 
       await upsertPersonsFromReport(doc);
+      await recomputeWorkerTrackingStats(req.user?.id);
 
       await logActivity({
         userId: req.user?.id,
@@ -498,6 +502,7 @@ export const createElderlyMonthlyReport = async (
     const {
       kabupaten,
       puskesmas,
+      desa,
       bulanTahun,
       metaPairs,
       headerKeys,
@@ -544,6 +549,7 @@ export const createElderlyMonthlyReport = async (
         {
           worksheetName: sourceSheetName?.trim() || "Sheet1",
           puskesmas: puskesmas.trim(),
+          desa: String(desa ?? "").trim(),
           kabupaten: kabupaten.trim(),
           bulanTahun: bulanTahun.trim(),
           metaPairs: Array.isArray(metaPairs) ? metaPairs : [],
@@ -558,6 +564,7 @@ export const createElderlyMonthlyReport = async (
         },
       ],
       puskesmas: puskesmas.trim(),
+      desa: String(desa ?? "").trim(),
       metaPairs: Array.isArray(metaPairs) ? metaPairs : [],
       headerKeys,
       headerLabels: Array.isArray(headerLabels)
@@ -573,6 +580,7 @@ export const createElderlyMonthlyReport = async (
     });
 
     await upsertPersonsFromReport(doc);
+    await recomputeWorkerTrackingStats(req.user?.id);
 
     await logActivity({
       userId: req.user?.id,
@@ -682,6 +690,8 @@ export const updateElderlyMonthlyReport = async (
     );
 
     await upsertPersonsFromReport(updatedReport);
+    const statsOwnerId = String((updatedReport as any)?.createdBy?._id ?? (updatedReport as any)?.createdBy ?? existingReport.createdBy ?? "").trim();
+    await recomputeWorkerTrackingStats(statsOwnerId || req.user?.id);
 
     await logActivity({
       userId: req.user?.id,
@@ -868,6 +878,7 @@ export const deleteElderlyMonthlyReport = async (
     );
 
     await ElderlyMonthlyReport.findByIdAndDelete(id);
+    await recomputeWorkerTrackingStats(String(report.createdBy ?? req.user?.id ?? "").trim() || req.user?.id);
 
     await logActivity({
       userId: req.user?.id,

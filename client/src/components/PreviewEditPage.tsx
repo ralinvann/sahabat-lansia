@@ -7,7 +7,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "./ui/select";
-import { CheckCircle, Edit3, Save, X, AlertCircle, FileText } from "lucide-react";
+import { CheckCircle, Edit3, Save, X, AlertCircle, FileText, Trash2, Undo2 } from "lucide-react";
 import { api } from "../lib/api";
 
 type UploadPayload = {
@@ -29,6 +29,7 @@ type WorksheetData = UploadPayload & { worksheetName: string };
 type MultiWorksheetPayload = { fileName?: string; worksheets: WorksheetData[]; activeWorksheetIndex?: number };
 type LocationConfig = { kabupaten: string; desaList: string[] };
 type PreviewEditPageProps = { initialData?: any[] | UploadPayload | null; onDone?: () => void; onCancel?: () => void };
+type RemovedRowEntry = { row: any; index: number; worksheetIndex: number };
 
 function excelSerialToDate(serial: number): Date {
   const excelEpoch = new Date(1899, 11, 30);
@@ -119,6 +120,7 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
   const [locationConfigs, setLocationConfigs] = useState<LocationConfig[]>([]);
   const [selectedKabupatenConfig, setSelectedKabupatenConfig] = useState<string>("");
   const [selectedDesa, setSelectedDesa] = useState<string>("");
+  const [removedRows, setRemovedRows] = useState<RemovedRowEntry[]>([]);
 
   function payloadFromArray(arr: any[]): UploadPayload {
     const rows = (arr || []).map((r: any, i: number) => {
@@ -301,6 +303,102 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
     setEditedRows((prev) => ({ ...prev, [String(rowId)]: { ...(prev[String(rowId)] || {}), [key]: value } }));
   };
 
+  const persistPreviewState = (nextPayload: UploadPayload | null, nextMultiWorksheetPayload?: MultiWorksheetPayload | null) => {
+    try {
+      const dataToSave = nextMultiWorksheetPayload
+        ? { ...nextMultiWorksheetPayload, activeWorksheetIndex }
+        : nextPayload;
+      if (dataToSave) sessionStorage.setItem("previewData", JSON.stringify(dataToSave));
+      else sessionStorage.removeItem("previewData");
+    } catch {}
+  };
+
+  const updateCurrentRows = (
+    rowUpdater: (currentRows: any[]) => any[],
+    options?: { resetEdits?: boolean; nextRemovedRows?: RemovedRowEntry[] }
+  ) => {
+    if (!payload) return;
+
+    const nextRows = rowUpdater(payload.rows);
+    const nextPayload = { ...payload, rows: nextRows };
+    let nextMultiPayload = multiWorksheetPayload;
+
+    if (multiWorksheetPayload) {
+      nextMultiPayload = {
+        ...multiWorksheetPayload,
+        activeWorksheetIndex,
+        worksheets: multiWorksheetPayload.worksheets.map((worksheet, index) =>
+          index === activeWorksheetIndex ? { ...worksheet, rows: nextRows } : worksheet
+        ),
+      };
+      setMultiWorksheetPayload(nextMultiPayload);
+    }
+
+    setPayload(nextPayload);
+    if (options?.resetEdits) setEditedRows({});
+    if (options?.nextRemovedRows) setRemovedRows(options.nextRemovedRows);
+    persistPreviewState(nextPayload, nextMultiPayload);
+  };
+
+  const handleRemoveRow = (rowId: string | number) => {
+    if (!payload) return;
+    const targetIndex = payload.rows.findIndex((row) => String(row.id) === String(rowId));
+    if (targetIndex < 0) return;
+
+    const removedEntry: RemovedRowEntry = {
+      row: payload.rows[targetIndex],
+      index: targetIndex,
+      worksheetIndex: activeWorksheetIndex,
+    };
+
+    const nextRemovedRows = [...removedRows, removedEntry];
+    updateCurrentRows(
+      (currentRows) => currentRows.filter((row) => String(row.id) !== String(rowId)),
+      { nextRemovedRows }
+    );
+
+    setEditedRows((prev) => {
+      const next = { ...prev };
+      delete next[String(rowId)];
+      return next;
+    });
+    setSuccessMsg("Baris dihapus dari preview. Gunakan Undo untuk mengembalikan.");
+    setTimeout(() => setSuccessMsg(null), 2000);
+  };
+
+  const handleUndoRemoveRow = () => {
+    const lastRemoved = removedRows[removedRows.length - 1];
+    if (!lastRemoved) return;
+
+    const nextRemovedRows = removedRows.slice(0, -1);
+    if (multiWorksheetPayload && lastRemoved.worksheetIndex !== activeWorksheetIndex) {
+      const nextMultiPayload = {
+        ...multiWorksheetPayload,
+        activeWorksheetIndex,
+        worksheets: multiWorksheetPayload.worksheets.map((worksheet, index) => {
+          if (index !== lastRemoved.worksheetIndex) return worksheet;
+          const nextRows = [...worksheet.rows];
+          nextRows.splice(Math.min(lastRemoved.index, nextRows.length), 0, lastRemoved.row);
+          return { ...worksheet, rows: nextRows };
+        }),
+      };
+      setMultiWorksheetPayload(nextMultiPayload);
+      persistPreviewState(payload, nextMultiPayload);
+      setRemovedRows(nextRemovedRows);
+      setSuccessMsg("Baris berhasil dikembalikan.");
+      setTimeout(() => setSuccessMsg(null), 1600);
+      return;
+    }
+
+    updateCurrentRows((currentRows) => {
+      const nextRows = [...currentRows];
+      nextRows.splice(Math.min(lastRemoved.index, nextRows.length), 0, lastRemoved.row);
+      return nextRows;
+    }, { nextRemovedRows });
+    setSuccessMsg("Baris berhasil dikembalikan.");
+    setTimeout(() => setSuccessMsg(null), 1600);
+  };
+
   const handleSaveAllChanges = () => {
     if (!payload) return;
     const newRows = payload.rows.map((row) => {
@@ -317,7 +415,19 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
     });
     const newPayload = { ...payload, rows: newRows };
     setPayload(newPayload);
-    try { sessionStorage.setItem("previewData", JSON.stringify(newPayload)); } catch {}
+    if (multiWorksheetPayload) {
+      const nextMultiPayload = {
+        ...multiWorksheetPayload,
+        activeWorksheetIndex,
+        worksheets: multiWorksheetPayload.worksheets.map((worksheet, index) =>
+          index === activeWorksheetIndex ? { ...worksheet, rows: newRows } : worksheet
+        ),
+      };
+      setMultiWorksheetPayload(nextMultiPayload);
+      persistPreviewState(newPayload, nextMultiPayload);
+    } else {
+      persistPreviewState(newPayload);
+    }
     setEditedRows({});
     setIsEditing(false);
     setSuccessMsg("Semua perubahan disimpan.");
@@ -447,10 +557,21 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
                 {isEditing ? "Batalkan" : "Edit Data"}
               </Button>
               {isEditing && (
-                <Button onClick={handleSaveAllChanges} className={`gap-2 ${btnAnim}`}>
-                  <Save className="w-4 h-4" />
-                  Simpan Perubahan
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleUndoRemoveRow}
+                    disabled={removedRows.length === 0}
+                    className={`gap-2 ${btnAnim}`}
+                  >
+                    <Undo2 className="w-4 h-4" />
+                    Undo Hapus
+                  </Button>
+                  <Button onClick={handleSaveAllChanges} className={`gap-2 ${btnAnim}`}>
+                    <Save className="w-4 h-4" />
+                    Simpan Perubahan
+                  </Button>
+                </>
               )}
               {!isEditing && (
                 <Button
@@ -661,6 +782,7 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
                         {headerLabels[i] ?? key}
                       </TableHead>
                     ))}
+                    {isEditing && <TableHead className="text-xs text-right w-24">Aksi</TableHead>}
                   </TableRow>
                 )}
               </TableHeader>
@@ -750,6 +872,20 @@ export function PreviewEditPage({ initialData = null, onDone, onCancel }: Previe
                           </TableCell>
                         );
                       })}
+                      {isEditing && (
+                        <TableCell className="text-right align-top w-24">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleRemoveRow(row.id)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                            Hapus
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
