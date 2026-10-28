@@ -15,6 +15,27 @@ import { useAuth } from "../hooks/useAuth";
 import { api } from "../lib/api";
 
 const btnAnim = "transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]";
+const MONTH_OPTIONS = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+
+const getReportPeriod = (value: unknown) => {
+  const raw = String(value ?? "").trim().toUpperCase();
+  const yearMatch = raw.match(/\d{4}/);
+  let month = MONTH_OPTIONS.find((option) => raw.includes(option)) || "";
+  if (!month && raw.includes("PEBRUARI")) month = "FEBRUARI";
+
+  if (/^\d+(?:\.\d+)?$/.test(raw)) {
+    const serial = Number(raw);
+    if (Number.isFinite(serial) && serial >= 20000 && serial <= 2958465) {
+      const date = new Date(Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000);
+      return {
+        month: MONTH_OPTIONS[date.getUTCMonth()],
+        year: String(date.getUTCFullYear()),
+      };
+    }
+  }
+
+  return { month, year: yearMatch?.[0] || "" };
+};
 
 export interface AdminReportsViewState {
   reportSearch: string;
@@ -453,19 +474,12 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
     }
   };
 
-  const getReportYear = (r: any) => {
-    const m = String(r.bulanTahun || "").match(/\d{4}/);
-    return m ? m[0] : "";
+  const getReportYear = (r: any) => getReportPeriod(r.bulanTahun).year;
+  const getReportMonth = (r: any) => getReportPeriod(r.bulanTahun).month;
+  const formatReportPeriod = (value: unknown) => {
+    const period = getReportPeriod(value);
+    return period.month && period.year ? `${period.month} ${period.year}` : String(value ?? "").trim() || "-";
   };
-
-  const getReportMonth = (r: any) => {
-    const raw = String(r.bulanTahun || "").toUpperCase();
-    const months = ["JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI","JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"];
-    for (const m of months) { if (raw.includes(m)) return m; }
-    return "";
-  };
-
-  const MONTH_OPTIONS = ["JANUARI","FEBRUARI","MARET","APRIL","MEI","JUNI","JULI","AGUSTUS","SEPTEMBER","OKTOBER","NOVEMBER","DESEMBER"];
 
   const reportYearOptions = useMemo(() => {
     const years = new Set(recentReports.map(getReportYear).filter(Boolean));
@@ -666,7 +680,7 @@ export function AdminPage({ onNavigate, initialReportsViewState, restoreScrollY,
                     <TableRow key={r._id} className="hover:bg-muted/50">
                       <TableCell className="text-sm text-right">{idx + 1}</TableCell>
                       <TableCell className="text-sm font-medium max-w-[180px] truncate" title={r.fileName || "-"}>{r.fileName || "-"}</TableCell>
-                      <TableCell className="text-sm">{r.bulanTahun || "-"}</TableCell>
+                      <TableCell className="text-sm">{formatReportPeriod(r.bulanTahun)}</TableCell>
                       <TableCell className="text-sm">{String(r.kabupaten || "-").replace(/^:\s*/, "")}</TableCell>
                       <TableCell className="text-sm">{String(r.puskesmas || r.worksheets?.[0]?.puskesmas || "-").replace(/^:\s*/, "")}</TableCell>
                       <TableCell className="text-sm">
